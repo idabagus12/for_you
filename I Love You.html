@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>For You</title>
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#12261a; --text:#fff; }
+  html, body { height:100%; margin:0; overflow:hidden; background:var(--bg); }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  #dim { position:fixed; inset:0; background:rgba(12,4,10,.72); opacity:0; transition:opacity 2s ease; pointer-events:none; }
+  #msg { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:24px;
+    box-sizing:border-box; text-align:center; pointer-events:none;
+    font-family:'Dancing Script','Brush Script MT',cursive; font-weight:600; color:var(--text);
+    font-size:clamp(2rem, 7.5vw, 4.6rem); line-height:1.25; text-shadow:0 2px 24px rgba(255,120,160,.8);
+    opacity:0; transform:scale(.92) translateY(10px); transition:opacity 2.2s ease .8s, transform 2.2s ease .8s; }
+  #player { position:fixed; left:50%; bottom:calc(8vh + env(safe-area-inset-bottom,0px)); width:min(92vw,420px);
+    transform:translate(-50%,24px); opacity:0; pointer-events:none; transition:opacity 1.6s ease, transform 1.6s ease; }
+  #spotify-embed { display:block; width:100%; height:152px; border:0; border-radius:12px; }
+  body.up #msg { transform:translateY(-15vh); transition:transform 1.6s ease; }
+  body.up #player { opacity:1; transform:translate(-50%,0); pointer-events:auto; }
+  body.done #dim { opacity:1; }
+  body.done #msg { opacity:1; transform:none; }
+  #replay { position:fixed; right:16px; top:calc(16px + env(safe-area-inset-top,0px)); border:0; border-radius:20px;
+    padding:8px 14px; background:rgba(255,255,255,.2); color:#fff; font:14px system-ui,sans-serif; cursor:pointer;
+    opacity:0; transition:opacity 1s ease 3s; backdrop-filter:blur(6px); }
+  body.done #replay { opacity:1; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="dim"></div>
+<div id="msg">I love you in every<br>second of my life</div>
+<div id="player">
+  <iframe id="spotify-embed" title="Play Magnolia on Spotify"
+    src="https://open.spotify.com/embed/track/3JkDuxcnIzBUngCk6peKZi?utm_source=generator&theme=0"
+    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+    loading="eager" allowfullscreen></iframe>
+</div>
+<button id="replay">Replay ♥</button>
+<script>
+(function () {
+  var cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  var W, H, dpr, flowers = [], sprites = [], t0, raf, finished = false;
+  var GOLD = Math.PI * (3 - Math.sqrt(5)), TAU = Math.PI * 2;
+  var DURATION = 7000, BLOOM = 1000, SZ = 300, C = SZ / 2;
+  var R = Math.random;
+
+  function col(h, s, l, a) {
+    return 'hsla(' + h + ',' + s + '%,' + Math.max(0, Math.min(98, l)) + '%,' + (a == null ? 1 : a) + ')';
+  }
+
+  function petal(g, L, Wd, h, s, l, blur) {
+    var p = new Path2D();
+    p.moveTo(0, 0);
+    p.bezierCurveTo(-Wd, -L * 0.2, -Wd * 1.05, -L * 0.85, 0, -L);
+    p.bezierCurveTo(Wd * 1.05, -L * 0.85, Wd, -L * 0.2, 0, 0);
+    var gr = g.createLinearGradient(0, 0, 0, -L);
+    gr.addColorStop(0, col(h, s, l - 38));
+    gr.addColorStop(0.3, col(h, s, l - 12));
+    gr.addColorStop(0.8, col(h, s, l));
+    gr.addColorStop(1, col(h, s, l + 9));
+    g.save();
+    g.shadowColor = 'rgba(0,0,0,.4)'; g.shadowBlur = blur; g.shadowOffsetY = 1;
+    g.fillStyle = gr; g.fill(p);
+    g.restore();
+    g.lineWidth = 0.8;
+    g.strokeStyle = 'rgba(0,0,0,.11)';
+    for (var v = -2; v <= 2; v++) {
+      g.beginPath(); g.moveTo(0, -L * 0.05);
+      g.quadraticCurveTo(v * Wd * 0.4, -L * 0.5, v * Wd * 0.28, -L * 0.88);
+      g.stroke();
+    }
+    g.strokeStyle = 'rgba(255,255,255,.2)'; g.stroke(p);
+  }
+
+  function ring(g, n, L, Wd, off, h, s, l, blur) {
+    for (var k = 0; k < n; k++) {
+      g.save();
+      g.rotate(off + k * TAU / n + (R() - .5) * 0.18);
+      var f = 0.92 + R() * 0.16;
+      petal(g, L * f, Wd, h + (R() - .5) * 6, s, l + (R() - .5) * 6, blur);
+      g.restore();
+    }
+  }
+
+  function leaf(g, ang, len) {
+    g.save(); g.rotate(ang);
+    var p = new Path2D(), w = len * 0.3;
+    p.moveTo(0, 0);
+    p.bezierCurveTo(-w, -len * 0.3, -w * 0.8, -len * 0.8, 0, -len);
+    p.bezierCurveTo(w * 0.8, -len * 0.8, w, -len * 0.3, 0, 0);
+    var gr = g.createLinearGradient(0, 0, 0, -len);
+    gr.addColorStop(0, 'hsl(125,45%,14%)'); gr.addColorStop(1, 'hsl(105,50%,36%)');
+    g.save(); g.shadowColor = 'rgba(0,0,0,.5)'; g.shadowBlur = 8; g.fillStyle = gr; g.fill(p); g.restore();
+    g.strokeStyle = 'rgba(190,230,150,.35)'; g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -len * 0.92); g.stroke();
+    g.lineWidth = 0.6;
+    for (var i = 1; i < 6; i++) {
+      var y = -len * i / 6.5;
+      g.beginPath(); g.moveTo(0, y); g.lineTo(-w * 0.5 * (1 - i / 7), y - len * 0.1);
+      g.moveTo(0, y); g.lineTo(w * 0.5 * (1 - i / 7), y - len * 0.1); g.stroke();
+    }
+    g.restore();
+  }
+
+  function dot(g, x, y, r, c) { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); }
+
+  function makeSprite(type, o) {
+    var cvs = document.createElement('canvas'); cvs.width = cvs.height = SZ;
+    var g = cvs.getContext('2d');
+    g.translate(C, C);
+    var nl = 4 + Math.floor(R() * 2), a0 = R() * TAU;
+    for (var i = 0; i < nl; i++) leaf(g, a0 + i * TAU / nl + (R() - .5) * .5, 122 + R() * 16);
+    var h = o.h, s = o.s, l = o.l;
+    if (type === 'rose') {
+      ring(g, 8, 108, 46, R() * 6, h, s, l - 8, 10);
+      ring(g, 7, 90, 40, R() * 6, h, s, l - 4, 9);
+      ring(g, 6, 70, 33, R() * 6, h, s, l, 8);
+      ring(g, 5, 50, 26, R() * 6, h, s, l + 2, 6);
+      ring(g, 4, 32, 18, R() * 6, h, s, l - 6, 4);
+      var rg = g.createRadialGradient(0, 0, 0, 0, 0, 14);
+      rg.addColorStop(0, col(h, s, l - 30)); rg.addColorStop(1, col(h, s, l - 8, 0));
+      g.fillStyle = rg; g.beginPath(); g.arc(0, 0, 14, 0, TAU); g.fill();
+      g.strokeStyle = col(h, s, l - 32, .6); g.lineWidth = 1;
+      for (var k = 0; k < 3; k++) { g.beginPath(); g.arc(k - 1, 0, 3 + k * 3, k, k + 4); g.stroke(); }
+    } else if (type === 'daisy') {
+      ring(g, 20, 108, 13, R() * 6, h, s, l - 4, 5);
+      ring(g, 18, 98, 13, R() * 6, h, s, l, 5);
+      var dg = g.createRadialGradient(-4, -4, 2, 0, 0, 24);
+      dg.addColorStop(0, 'hsl(48,95%,62%)'); dg.addColorStop(.7, 'hsl(40,85%,45%)'); dg.addColorStop(1, 'hsl(30,70%,26%)');
+      g.save(); g.shadowColor = 'rgba(0,0,0,.5)'; g.shadowBlur = 8; g.fillStyle = dg;
+      g.beginPath(); g.arc(0, 0, 24, 0, TAU); g.fill(); g.restore();
+      for (var d = 0; d < 70; d++) {
+        var a = R() * TAU, r = Math.sqrt(R()) * 22;
+        dot(g, Math.cos(a) * r, Math.sin(a) * r, 1 + R() * 1.2, R() < .5 ? 'rgba(90,50,10,.5)' : 'rgba(255,225,120,.55)');
+      }
+    } else {
+      ring(g, 5, 106, 56, R() * 6, h, s, l - 3, 10);
+      ring(g, 5, 76, 42, R() * 6, h, s, l + 2, 6);
+      dot(g, 0, 0, 12, 'hsl(80,45%,60%)');
+      for (var m = 0; m < 18; m++) {
+        var an = R() * TAU, ln = 20 + R() * 20;
+        g.strokeStyle = 'rgba(250,240,200,.85)'; g.lineWidth = 1.2;
+        g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(an) * ln, Math.sin(an) * ln); g.stroke();
+        dot(g, Math.cos(an) * ln, Math.sin(an) * ln, 2.6, 'hsl(45,95%,52%)');
+      }
+    }
+    return cvs;
+  }
+
+  function buildSprites() {
+    sprites = [];
+    var roses = [[350,75,46],[340,70,66],[12,82,62],[30,85,76],[285,45,62],[0,78,40]];
+    var daisies = [[0,0,97],[48,95,64],[330,70,80],[0,0,92]];
+    var blossoms = [[350,80,78],[0,0,97],[320,65,66],[270,50,76]];
+    function add(type, arr, copies) {
+      arr.forEach(function (a) { for (var i = 0; i < copies; i++) sprites.push(makeSprite(type, { h: a[0], s: a[1], l: a[2] })); });
+    }
+    add('rose', roses, 2); add('daisy', daisies, 2); add('blossom', blossoms, 2);
+  }
+
+  function setup() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    if (!sprites.length) buildSprites();
+    var s = Math.max(44, Math.min(96, Math.min(W, H) / 5));
+    var c = s * 0.42, maxR = Math.sqrt(W * W + H * H) / 2 + s;
+    var n = Math.ceil(Math.pow(maxR / c, 2));
+    flowers = [];
+    for (var i = 0; i < n; i++) {
+      var a = i * GOLD, r = c * Math.sqrt(i);
+      flowers.push({
+        x: W / 2 + Math.cos(a) * r, y: H / 2 + Math.sin(a) * r,
+        s: s * (0.85 + R() * 0.3) * (SZ / 240),
+        img: sprites[Math.floor(R() * sprites.length)],
+        rot: R() * TAU, spin: (R() - .5) * 0.0004, ph: R() * TAU,
+        birth: (i / n) * DURATION
+      });
+    }
+  }
+
+  function ease(t) { var k = 1.4; t = t - 1; return t * t * ((k + 1) * t + k) + 1; }
+
+  function draw(f, el) {
+    var p = (el - f.birth) / BLOOM;
+    if (p <= 0) return;
+    if (p > 1) p = 1;
+    var sc = ease(p) * f.s / SZ;
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.rot + el * f.spin + (1 - p) * 1.8 + Math.sin(el / 1500 + f.ph) * 0.04);
+    ctx.scale(sc, sc);
+    ctx.globalAlpha = Math.min(1, p * 2.5);
+    ctx.drawImage(f.img, -C, -C);
+    ctx.restore();
+  }
+
+  function frame(now) {
+    var el = now - t0;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#12261a';
+    ctx.fillRect(0, 0, W, H);
+    for (var i = 0; i < flowers.length; i++) draw(flowers[i], el);
+    if (!finished && el > DURATION + BLOOM) {
+      finished = true;
+      setTimeout(function () { document.body.classList.add('done'); }, 400);
+      setTimeout(function () { if (finished) document.body.classList.add('up'); }, 4800);
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  function start() {
+    cancelAnimationFrame(raf);
+    document.body.classList.remove('done', 'up');
+    finished = false;
+    setup();
+    t0 = performance.now();
+    raf = requestAnimationFrame(frame);
+  }
+
+  document.getElementById('replay').addEventListener('click', start);
+  var rt;
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(start, 250); });
+  start();
+})();
+</script>
+</body>
+</html>
